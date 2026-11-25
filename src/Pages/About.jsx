@@ -158,7 +158,7 @@ const AboutPage = () => {
     {
       icon: Globe,
       color: "from-[#6366f1] to-[#a855f7]",
-      value: "3.69",
+      value: "3.89",
       label: "IPK / GPA",
       description: "D4 Teknik Informatika Polinema",
       animation: "fade-left",
