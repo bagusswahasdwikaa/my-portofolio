@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../supabase";
+import PropTypes from "prop-types";
 import {
   Plus,
   Trash2,
@@ -11,6 +12,11 @@ import {
   Github,
   Pencil,
 } from "lucide-react";
+import {
+  confirmAdminDelete,
+  showAdminError,
+  showAdminToast,
+} from "../../utils/adminFeedback";
 
 const Card = ({ children, className = "" }) => (
   <div className={`relative group ${className}`}>
@@ -20,6 +26,21 @@ const Card = ({ children, className = "" }) => (
     </div>
   </div>
 );
+Card.propTypes = {
+  children: PropTypes.node.isRequired,
+  className: PropTypes.string,
+};
+
+const ProjectShape = PropTypes.shape({
+  id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  Title: PropTypes.string,
+  Description: PropTypes.string,
+  Img: PropTypes.string,
+  Link: PropTypes.string,
+  Github: PropTypes.string,
+  TechStack: PropTypes.arrayOf(PropTypes.string),
+  Features: PropTypes.arrayOf(PropTypes.string),
+});
 
 const InputField = ({
   label,
@@ -43,6 +64,14 @@ const InputField = ({
     />
   </div>
 );
+InputField.propTypes = {
+  label: PropTypes.string.isRequired,
+  value: PropTypes.string.isRequired,
+  onChange: PropTypes.func.isRequired,
+  placeholder: PropTypes.string,
+  type: PropTypes.string,
+  required: PropTypes.bool,
+};
 
 const SkeletonCard = () => (
   <div className="relative">
@@ -152,6 +181,11 @@ const ProjectCard = ({ project, onDelete, onEdit }) => {
     </Card>
   );
 };
+ProjectCard.propTypes = {
+  project: ProjectShape.isRequired,
+  onDelete: PropTypes.func.isRequired,
+  onEdit: PropTypes.func.isRequired,
+};
 
 const Modal = ({ title, onClose, children }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6">
@@ -182,6 +216,11 @@ const Modal = ({ title, onClose, children }) => (
     </div>
   </div>
 );
+Modal.propTypes = {
+  title: PropTypes.string.isRequired,
+  onClose: PropTypes.func.isRequired,
+  children: PropTypes.node.isRequired,
+};
 
 const ProjectForm = ({
   initial,
@@ -212,6 +251,13 @@ const ProjectForm = ({
     if (!f) return;
     setFile(f);
     setPreview(URL.createObjectURL(f));
+  };
+  ProjectForm.propTypes = {
+    initial: ProjectShape,
+    onSubmit: PropTypes.func.isRequired,
+    onCancel: PropTypes.func.isRequired,
+    submitLabel: PropTypes.string,
+    uploading: PropTypes.bool.isRequired,
   };
 
   return (
@@ -334,18 +380,29 @@ const ProjectForm = ({
 export default function Projects() {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [editProject, setEditProject] = useState(null);
   const [uploading, setUploading] = useState(false);
 
   const fetchProjects = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("projects")
-      .select("*")
-      .order("created_at", { ascending: false });
-    setProjects(data || []);
-    setLoading(false);
+    setLoadError("");
+    try {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setProjects(data || []);
+      return true;
+    } catch (error) {
+      setLoadError(error.message || "Tidak dapat memuat project.");
+      await showAdminError("Memuat project", error);
+      return false;
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -354,7 +411,9 @@ export default function Projects() {
 
   const uploadImage = async (f) => {
     const fileName = `${Date.now()}-${f.name}`;
-    await supabase.storage.from("project-images").upload(fileName, f);
+    const { error: uploadError } = await supabase
+      .storage.from("project-images").upload(fileName, f);
+    if (uploadError) throw uploadError;
     const { data } = supabase.storage
       .from("project-images")
       .getPublicUrl(fileName);
@@ -363,33 +422,10 @@ export default function Projects() {
 
   const handleCreate = async (form, file) => {
     setUploading(true);
-    let imgUrl = "";
-    if (file) imgUrl = await uploadImage(file);
-    await supabase.from("projects").insert({
-      Title: form.Title,
-      Description: form.Description,
-      Img: imgUrl,
-      TechStack: form.TechStack.split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      Features: form.Features.split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      Link: form.Link,
-      Github: form.Github,
-    });
-    setShowCreate(false);
-    setUploading(false);
-    fetchProjects();
-  };
-
-  const handleEdit = async (form, file) => {
-    setUploading(true);
-    let imgUrl = editProject.Img || "";
-    if (file) imgUrl = await uploadImage(file);
-    await supabase
-      .from("projects")
-      .update({
+    try {
+      let imgUrl = "";
+      if (file) imgUrl = await uploadImage(file);
+      const { error } = await supabase.from("projects").insert({
         Title: form.Title,
         Description: form.Description,
         Img: imgUrl,
@@ -401,17 +437,60 @@ export default function Projects() {
           .filter(Boolean),
         Link: form.Link,
         Github: form.Github,
-      })
-      .eq("id", editProject.id);
-    setEditProject(null);
-    setUploading(false);
-    fetchProjects();
+      });
+      if (error) throw error;
+      setShowCreate(false);
+      await showAdminToast("success", "Project berhasil ditambahkan");
+      await fetchProjects();
+    } catch (error) {
+      await showAdminError("Menyimpan project", error);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleEdit = async (form, file) => {
+    setUploading(true);
+    try {
+      let imgUrl = editProject.Img || "";
+      if (file) imgUrl = await uploadImage(file);
+      const { error } = await supabase
+        .from("projects")
+        .update({
+          Title: form.Title,
+          Description: form.Description,
+          Img: imgUrl,
+          TechStack: form.TechStack.split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          Features: form.Features.split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          Link: form.Link,
+          Github: form.Github,
+        })
+        .eq("id", editProject.id);
+      if (error) throw error;
+      setEditProject(null);
+      await showAdminToast("success", "Project berhasil diperbarui");
+      await fetchProjects();
+    } catch (error) {
+      await showAdminError("Memperbarui project", error);
+    } finally {
+      setUploading(false);
+    }
   };
 
   const deleteProject = async (id) => {
-    if (!confirm("Delete this project?")) return;
-    await supabase.from("projects").delete().eq("id", id);
-    fetchProjects();
+    if (!(await confirmAdminDelete("project ini"))) return;
+    try {
+      const { error } = await supabase.from("projects").delete().eq("id", id);
+      if (error) throw error;
+      await showAdminToast("success", "Project berhasil dihapus");
+      await fetchProjects();
+    } catch (error) {
+      await showAdminError("Menghapus project", error);
+    }
   };
 
   return (
@@ -479,6 +558,19 @@ export default function Projects() {
             <SkeletonCard key={i} />
           ))}
         </div>
+      ) : loadError ? (
+        <Card>
+          <div className="p-8 text-center" role="alert">
+            <p className="text-sm text-red-600">{loadError}</p>
+            <button
+              type="button"
+              onClick={fetchProjects}
+              className="mt-4 min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm text-[var(--text)]"
+            >
+              Coba lagi
+            </button>
+          </div>
+        </Card>
       ) : projects.length === 0 ? (
         <Card>
           <div className="p-16 text-center">

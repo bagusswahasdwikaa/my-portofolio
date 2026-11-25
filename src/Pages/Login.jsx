@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { supabase } from "../supabase";
+import { supabase, isSupabaseConfigured } from "../supabase";
 import { useNavigate } from 'react-router-dom'
-import { Mail, Lock, LogIn, Sparkles, Eye, EyeOff } from 'lucide-react'
+import { Mail, Lock, LogIn, Sparkles, Eye, EyeOff, AlertTriangle } from 'lucide-react'
+import Swal from 'sweetalert2'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -12,24 +13,91 @@ export default function Login() {
 
   const handleLogin = async (e) => {
     e.preventDefault()
-    setLoading(true)
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) { alert(error.message); setLoading(false); return }
 
-    const { data: profile } = await supabase
-      .from('profiles').select('role').eq('id', data.user.id).single()
-
-    if (profile?.role !== 'admin') {
-      alert('Access denied')
-      await supabase.auth.signOut()
-      setLoading(false)
-      return
+    if (!isSupabaseConfigured) {
+      Swal.fire({
+        icon: 'warning',
+        title: 'Supabase Belum Dikonfigurasi',
+        html: `File <code>.env</code> Anda masih berisi placeholder.<br/><br/>
+        Silakan buka file <b>.env</b> di editor dan isi nilai asli:<br/>
+        <code class="text-xs bg-black/40 p-1 rounded block mt-2">VITE_SUPABASE_URL=https://...<br/>VITE_SUPABASE_ANON_KEY=eyJhb...</code><br/>
+        Lalu restart dev server agar perubahan terbaca.`,
+        background: '#ffffff',
+        color: '#0f172a',
+        confirmButtonColor: '#315f8a',
+      });
+      return;
     }
-    navigate('/dashboard')
+
+    setLoading(true)
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+
+      if (error) {
+        Swal.fire({
+          icon: 'error',
+          title: 'Login Gagal',
+          text: error.message || 'Email atau password salah. Silakan coba lagi.',
+          background: '#ffffff',
+          color: '#0f172a',
+          confirmButtonColor: '#315f8a',
+        });
+        setLoading(false);
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profileError || profile?.role !== 'admin') {
+        Swal.fire({
+          icon: 'error',
+          title: 'Akses Ditolak',
+          text: 'Akun ini bukan administrator (role !== admin). Pastikan Anda telah menjalankan query INSERT profiles untuk user ini.',
+          background: '#ffffff',
+          color: '#0f172a',
+          confirmButtonColor: '#315f8a',
+        });
+        await supabase.auth.signOut();
+        setLoading(false);
+        return;
+      }
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Login Berhasil',
+        text: 'Selamat datang di Dashboard Admin!',
+        timer: 1500,
+        showConfirmButton: false,
+        background: '#ffffff',
+        color: '#0f172a',
+      });
+
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1000);
+
+    } catch (err) {
+      console.error("Login exception:", err);
+      Swal.fire({
+        icon: 'error',
+        title: 'Koneksi Gagal',
+        html: `Gagal menghubungi server Supabase.<br/><br/><span class="text-xs text-red-300">${err.message || 'Network error'}</span><br/><br/>Pastikan <b>VITE_SUPABASE_URL</b> di file <b>.env</b> sudah diisi dengan benar dan dev server sudah di-restart.`,
+        background: '#ffffff',
+        color: '#0f172a',
+        confirmButtonColor: '#315f8a',
+      });
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
+    <div className="admin-shell min-h-screen flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="relative group">
           <div className="absolute -inset-0.5 bg-gradient-to-r from-[#6366f1] to-[#a855f7] rounded-2xl blur opacity-30 group-hover:opacity-50 transition duration-700" />
@@ -44,6 +112,19 @@ export default function Login() {
               <h1 className="text-3xl font-bold text-white">Welcome Back</h1>
               <p className="text-gray-400 text-sm">Sign in to manage your portfolio</p>
             </div>
+
+            {/* Warning if Supabase is not configured yet */}
+            {!isSupabaseConfigured && (
+              <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2.5 text-amber-300 text-xs leading-relaxed">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
+                <div>
+                  <p className="font-semibold text-amber-200">Supabase Belum Dikonfigurasi</p>
+                  <p className="text-amber-300/80 mt-0.5">
+                    Harap isi <span className="font-mono text-white">VITE_SUPABASE_URL</span> &amp; <span className="font-mono text-white">VITE_SUPABASE_ANON_KEY</span> di file <span className="underline font-semibold">.env</span> untuk mengaktifkan login.
+                  </p>
+                </div>
+              </div>
+            )}
 
             {/* Form */}
             <form onSubmit={handleLogin} className="space-y-4">

@@ -307,6 +307,19 @@ npm run build
 
 Upload the contents of the `dist/` folder to your hosting provider.
 
+### Run with Docker
+
+Build and run the production container (pass the public Supabase client settings used by the app):
+
+```bash
+docker build --build-arg VITE_SUPABASE_URL=your-supabase-project-url --build-arg VITE_SUPABASE_ANON_KEY=your-supabase-anon-key -t portfolio-v5 .
+docker run --rm -p 8080:8080 portfolio-v5
+```
+
+Open `http://localhost:8080`. The Nginx configuration falls back to `index.html` so React Router routes also work when loaded directly.
+
+Vercel deploys this Vite project from its source and does not use this Docker image. For Vercel, configure `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as project environment variables; use Docker only for local container testing or a container-based host.
+
 ---
 
 ## Credits & Contact

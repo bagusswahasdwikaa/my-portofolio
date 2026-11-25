@@ -1,171 +1,106 @@
-import React, { useState, useEffect } from "react";
-import { Menu, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Briefcase, Home as HomeIcon, Mail, User } from "lucide-react";
+
+const navItems = [
+    { href: "#Home", label: "Home", icon: HomeIcon },
+    { href: "#About", label: "About", icon: User },
+    { href: "#Portofolio", label: "Work", icon: Briefcase },
+    { href: "#Contact", label: "Contact", icon: Mail },
+];
 
 const Navbar = () => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [scrolled, setScrolled] = useState(false);
     const [activeSection, setActiveSection] = useState("Home");
-    
-    const navItems = [
-        { href: "#Home", label: "Home" },
-        { href: "#About", label: "About" },
-        { href: "#Portofolio", label: "Portofolio" },
-        { href: "#Contact", label: "Contact" },
-    ];
 
     useEffect(() => {
-        const handleScroll = () => {
-            setScrolled(window.scrollY > 20);
-            const sections = navItems.map(item => {
-                const section = document.querySelector(item.href);
-                if (section) {
-                    return {
-                        id: item.href.replace("#", ""),
-                        offset: section.offsetTop - 550,
-                        height: section.offsetHeight
-                    };
-                }
-                return null;
-            }).filter(Boolean);
+        const observedSections = new Set();
 
-            const currentPosition = window.scrollY;
-            const active = sections.find(section => 
-                currentPosition >= section.offset && 
-                currentPosition < section.offset + section.height
-            );
+        const updateActiveSection = () => {
+            const sections = Array.from(observedSections);
+            if (!sections.length) return;
 
-            if (active) {
-                setActiveSection(active.id);
-            }
+            const focusLine = window.innerHeight * 0.43;
+            const currentSection = sections.find((section) => {
+                const bounds = section.getBoundingClientRect();
+                return bounds.top <= focusLine && bounds.bottom > focusLine;
+            }) || sections.reduce((nearest, section) => {
+                const bounds = section.getBoundingClientRect();
+                const distance = Math.min(
+                    Math.abs(bounds.top - focusLine),
+                    Math.abs(bounds.bottom - focusLine)
+                );
+                return distance < nearest.distance
+                    ? { section, distance }
+                    : nearest;
+            }, { section: null, distance: Infinity }).section;
+
+            if (currentSection) setActiveSection(currentSection.id);
         };
 
-        window.addEventListener("scroll", handleScroll);
-        handleScroll();
-        return () => window.removeEventListener("scroll", handleScroll);
-    }, []);
+        const observer = new IntersectionObserver(
+            updateActiveSection,
+            { rootMargin: "-38% 0px -52% 0px", threshold: 0 }
+        );
+        const observeAvailableSections = () => {
+            navItems.forEach(({ href }) => {
+                const section = document.querySelector(href);
+                if (section && !observedSections.has(section)) {
+                    observedSections.add(section);
+                    observer.observe(section);
+                }
+            });
+            updateActiveSection();
+        };
+        const mutations = new MutationObserver(observeAvailableSections);
 
-    useEffect(() => {
-        if (isOpen) {
-            document.body.style.overflow = 'hidden';
-        } else {
-            document.body.style.overflow = 'unset';
-        }
-    }, [isOpen]);
+        observeAvailableSections();
+        mutations.observe(document.body, { childList: true, subtree: true });
+        return () => {
+            mutations.disconnect();
+            observer.disconnect();
+        };
+    }, []);
 
     const scrollToSection = (e, href) => {
         e.preventDefault();
         const section = document.querySelector(href);
         if (section) {
-            const top = section.offsetTop - 100;
-            window.scrollTo({
-                top: top,
-                behavior: "smooth"
+            setActiveSection(section.id);
+            section.scrollIntoView({
+                behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                    ? "auto"
+                    : "smooth",
+                block: "start",
             });
         }
-        setIsOpen(false);
     };
 
     return (
-        <nav
-            className={`fixed w-full top-0 z-50 transition-all duration-500 ${
-                isOpen
-                    ? "bg-[#030014]"
-                    : scrolled
-                    ? "bg-[#030014]/50 backdrop-blur-xl"
-                    : "bg-transparent"
-            }`}
-        >
-            <div className="mx-auto px-[5%] sm:px-[5%] lg:px-[10%]">
-                <div className="flex items-center justify-between h-16">
-                    {/* Logo */}
-                    <div className="flex-shrink-0">
-                        <a
-                            href="#Home"
-                            onClick={(e) => scrollToSection(e, "#Home")}
-                            className="text-xl font-bold bg-gradient-to-r from-[#a855f7] to-[#6366f1] bg-clip-text text-transparent"
-                        >
-                            Ekizr
-                        </a>
-                    </div>
-        
-                    {/* Desktop Navigation */}
-                    <div className="hidden md:block">
-                        <div className="ml-8 flex items-center space-x-8">
-                            {navItems.map((item) => (
-                                <a
-                                    key={item.label}
-                                    href={item.href}
-                                    onClick={(e) => scrollToSection(e, item.href)}
-                                    className="group relative px-1 py-2 text-sm font-medium"
-                                >
-                                    <span
-                                        className={`relative z-10 transition-colors duration-300 ${
-                                            activeSection === item.href.substring(1)
-                                                ? "bg-gradient-to-r from-[#6366f1] to-[#a855f7] bg-clip-text text-transparent font-semibold"
-                                                : "text-[#e2d3fd] group-hover:text-white"
-                                        }`}
-                                    >
-                                        {item.label}
-                                    </span>
-                                    <span
-                                        className={`absolute bottom-0 left-0 w-full h-0.5 bg-gradient-to-r from-[#6366f1] to-[#a855f7] transform origin-left transition-transform duration-300 ${
-                                            activeSection === item.href.substring(1)
-                                                ? "scale-x-100"
-                                                : "scale-x-0 group-hover:scale-x-100"
-                                        }`}
-                                    />
-                                </a>
-                            ))}
-                        </div>
-                    </div>
-        
-                    {/* Mobile Menu Button */}
-                    <div className="md:hidden">
-                        <button
-                            onClick={() => setIsOpen(!isOpen)}
-                            className={`relative p-2 text-[#e2d3fd] hover:text-white transition-transform duration-300 ease-in-out transform ${
-                                isOpen ? "rotate-90 scale-125" : "rotate-0 scale-100"
-                            }`}
-                        >
-                            {isOpen ? (
-                                <X className="w-6 h-6" />
-                            ) : (
-                                <Menu className="w-6 h-6" />
-                            )}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        
-            {/* Mobile Menu */}
-            <div
-                className={`md:hidden transition-all duration-300 ease-in-out ${
-                    isOpen
-                        ? "max-h-screen opacity-100"
-                        : "max-h-0 opacity-0 overflow-hidden"
-                }`}
+        <nav className="portfolio-navigation" aria-label="Section navigation">
+            <a
+                href="#Home"
+                onClick={(e) => scrollToSection(e, "#Home")}
+                className="nav-monogram"
+                aria-label="Back to home"
             >
-                <div className="px-4 py-6 space-y-4">
-                    {navItems.map((item, index) => (
+                SB
+            </a>
+            <div className="nav-links">
+                {navItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = activeSection === item.href.substring(1);
+                    return (
                         <a
                             key={item.label}
                             href={item.href}
                             onClick={(e) => scrollToSection(e, item.href)}
-                            className={`block px-4 py-3 text-lg font-medium transition-all duration-300 ease ${
-                                activeSection === item.href.substring(1)
-                                    ? "bg-gradient-to-r from-[#6366f1] to-[#a855f7] bg-clip-text text-transparent font-semibold"
-                                    : "text-[#e2d3fd] hover:text-white"
-                            }`}
-                            style={{
-                                transitionDelay: `${index * 100}ms`,
-                                transform: isOpen ? "translateX(0)" : "translateX(50px)",
-                                opacity: isOpen ? 1 : 0,
-                            }}
+                            className={`nav-link ${isActive ? "active" : ""}`}
+                            aria-current={isActive ? "page" : undefined}
                         >
-                            {item.label}
+                            <Icon aria-hidden="true" />
+                            <span>{item.label}</span>
                         </a>
-                    ))}
-                </div>
+                    );
+                })}
             </div>
         </nav>
     );

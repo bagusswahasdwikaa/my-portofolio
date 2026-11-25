@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import React, { useState, lazy, Suspense } from "react";
+import { useState, lazy, Suspense } from "react";
+import PropTypes from "prop-types";
 import { HelmetProvider } from "react-helmet-async";
 import "./index.css";
 import Navbar from "./components/Navbar";
@@ -14,6 +15,7 @@ import Dashboard from "./Pages/Dashboard";
 import ProtectedRoute from "./components/ProtectedRoute";
 
 const Portofolio = lazy(() => import("./Pages/Portofolio"));
+const CommentsSection = lazy(() => import("./Pages/CommentsSection"));
 const ContactPage = lazy(() => import("./Pages/Contact"));
 const ProjectDetails = lazy(() => import("./components/ProjectDetail"));
 const WelcomeScreen = lazy(() => import("./Pages/WelcomeScreen"));
@@ -31,20 +33,25 @@ const LandingPage = ({ showWelcome, setShowWelcome }) => {
       </AnimatePresence>
 
       {!showWelcome && (
-        <>
+        <div className="landing-page">
           <Navbar />
-      
           <Home />
           <About />
           <Suspense fallback={<div className="h-20" />}>
             <Portofolio />
+            <CommentsSection />
             <ContactPage />
           </Suspense>
           <Footer />
-        </>
+        </div>
       )}
     </>
   );
+};
+
+LandingPage.propTypes = {
+  showWelcome: PropTypes.bool.isRequired,
+  setShowWelcome: PropTypes.func.isRequired,
 };
 
 const ProjectPageLayout = () => (
@@ -57,7 +64,7 @@ const ProjectPageLayout = () => (
 );
 
 function App() {
-  const [showWelcome, setShowWelcome] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
 
   return (
     
@@ -65,7 +72,7 @@ function App() {
       <div className="pointer-events-none">
   <AnimatedBackground />
 </div>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           {/* PUBLIC */}
           <Route

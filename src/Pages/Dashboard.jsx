@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Routes, Route, Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabase'
+import { showAdminError } from '../utils/adminFeedback'
 import Projects from './dashboard/Projects'
 import Certificates from './dashboard/Certificates'
 import Comments from './dashboard/Comments'
@@ -18,7 +19,11 @@ export default function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      await showAdminError('Keluar', error)
+      return
+    }
     navigate('/login')
   }
 
@@ -52,7 +57,7 @@ export default function Dashboard() {
           return (
             <Link
               key={to}
-              to={to}
+              to={`/dashboard/${to}`}
               onClick={() => setSidebarOpen(false)}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 text-sm font-medium shrink-0 ${
                 active
@@ -81,7 +86,7 @@ export default function Dashboard() {
 
   return (
     // Kunci: TIDAK pakai overflow-hidden di sini supaya scrollbar main bisa diklik
-    <div className="flex text-white" style={{ height: '100dvh' }}>
+    <div className="admin-shell flex" style={{ height: '100dvh' }}>
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
@@ -113,6 +118,7 @@ export default function Dashboard() {
         <div className="lg:hidden flex items-center gap-3 px-4 py-3 border-b border-white/8 bg-white/3 backdrop-blur-xl shrink-0">
           <button
             onClick={() => setSidebarOpen(true)}
+            aria-label="Buka navigasi admin"
             className="p-2 rounded-lg border border-white/10 text-gray-400 hover:text-white transition-colors"
           >
             <Menu className="w-4 h-4" />

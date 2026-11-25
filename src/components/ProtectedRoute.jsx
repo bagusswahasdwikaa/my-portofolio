@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
+import PropTypes from 'prop-types'
 import { supabase } from "../supabase"; 
 
 export default function ProtectedRoute({ children }) {
@@ -7,22 +8,39 @@ export default function ProtectedRoute({ children }) {
 
   useEffect(() => {
     const check = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return setAllowed(false)
+      try {
+        const { data: { user }, error: authError } = await supabase.auth.getUser()
+        if (authError || !user) {
+          setAllowed(false)
+          return
+        }
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single()
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
 
-      setAllowed(profile?.role === 'admin')
+        setAllowed(!profileError && profile?.role === 'admin')
+      } catch {
+        setAllowed(false)
+      }
     }
     check()
   }, [])
 
-  if (allowed === null) return null
+  if (allowed === null) {
+    return (
+      <div className="admin-shell flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--line)] border-t-[var(--accent)]" />
+      </div>
+    )
+  }
   if (!allowed) return <Navigate to="/login" />
 
   return children
+}
+
+ProtectedRoute.propTypes = {
+  children: PropTypes.node.isRequired,
 }

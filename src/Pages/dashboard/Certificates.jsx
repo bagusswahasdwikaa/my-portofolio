@@ -1,6 +1,12 @@
 import { useEffect, useState } from 'react'
 import { supabase } from "../../supabase";
+import PropTypes from "prop-types";
 import { Award, Upload, Trash2, ImageIcon, Plus } from 'lucide-react'
+import {
+  confirmAdminDelete,
+  showAdminError,
+  showAdminToast,
+} from "../../utils/adminFeedback";
 
 const Card = ({ children, className = '' }) => (
   <div className={`relative group ${className}`}>
@@ -10,6 +16,10 @@ const Card = ({ children, className = '' }) => (
     </div>
   </div>
 )
+Card.propTypes = {
+  children: PropTypes.node.isRequired,
+  className: PropTypes.string,
+};
 
 const SkeletonCard = () => (
   <div className="relative">
@@ -51,6 +61,13 @@ const CertCard = ({ cert, onDelete }) => {
     </div>
   )
 }
+CertCard.propTypes = {
+  cert: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.number, PropTypes.string]).isRequired,
+    Img: PropTypes.string,
+  }).isRequired,
+  onDelete: PropTypes.func.isRequired,
+};
 
 export default function Certificates() {
   const [certs, setCerts] = useState([])
@@ -59,12 +76,23 @@ export default function Certificates() {
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState("")
 
   const fetchCerts = async () => {
     setLoading(true)
-    const { data } = await supabase.from('certificates').select('*').order('created_at', { ascending: false })
-    setCerts(data || [])
-    setLoading(false)
+    setLoadError("")
+    try {
+      const { data, error } = await supabase.from('certificates').select('*').order('created_at', { ascending: false })
+      if (error) throw error
+      setCerts(data || [])
+      return true
+    } catch (error) {
+      setLoadError(error.message || "Tidak dapat memuat sertifikat.")
+      await showAdminError("Memuat sertifikat", error)
+      return false
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => { fetchCerts() }, [])
@@ -78,18 +106,34 @@ export default function Certificates() {
   const uploadImage = async () => {
     if (!file) return
     setUploading(true)
-    const fileName = `cert-${Date.now()}-${file.name}`
-    await supabase.storage.from('certificate-images').upload(fileName, file)
-    const { data } = supabase.storage.from('certificate-images').getPublicUrl(fileName)
-    await supabase.from('certificates').insert({ Img: data.publicUrl })
-    setFile(null); setPreview(null); setUploading(false)
-    fetchCerts()
+    try {
+      const fileName = `cert-${Date.now()}-${file.name}`
+      const { error: uploadError } = await supabase.storage.from('certificate-images').upload(fileName, file)
+      if (uploadError) throw uploadError
+      const { data } = supabase.storage.from('certificate-images').getPublicUrl(fileName)
+      const { error } = await supabase.from('certificates').insert({ Img: data.publicUrl })
+      if (error) throw error
+      setFile(null)
+      setPreview(null)
+      await showAdminToast("success", "Sertifikat berhasil diunggah")
+      await fetchCerts()
+    } catch (error) {
+      await showAdminError("Mengunggah sertifikat", error)
+    } finally {
+      setUploading(false)
+    }
   }
 
   const deleteCert = async (id) => {
-    if (!confirm('Delete this certificate?')) return
-    await supabase.from('certificates').delete().eq('id', id)
-    fetchCerts()
+    if (!(await confirmAdminDelete("sertifikat ini"))) return
+    try {
+      const { error } = await supabase.from('certificates').delete().eq('id', id)
+      if (error) throw error
+      await showAdminToast("success", "Sertifikat berhasil dihapus")
+      await fetchCerts()
+    } catch (error) {
+      await showAdminError("Menghapus sertifikat", error)
+    }
   }
 
   return (
@@ -167,6 +211,19 @@ export default function Certificates() {
             <SkeletonCard key={i} />
           ))}
         </div>
+      ) : loadError ? (
+        <Card>
+          <div className="p-8 text-center" role="alert">
+            <p className="text-sm text-red-600">{loadError}</p>
+            <button
+              type="button"
+              onClick={fetchCerts}
+              className="mt-4 min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm text-[var(--text)]"
+            >
+              Coba lagi
+            </button>
+          </div>
+        </Card>
       ) : certs.length === 0 ? (
         <Card>
           <div className="p-16 text-center">

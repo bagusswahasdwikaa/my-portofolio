@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../../supabase";
+import PropTypes from "prop-types";
 import {
   MessageSquare,
   Pin,
@@ -11,6 +12,11 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import {
+  confirmAdminDelete,
+  showAdminError,
+  showAdminToast,
+} from "../../utils/adminFeedback";
 
 const PAGE_SIZE = 10;
 
@@ -22,23 +28,38 @@ const Card = ({ children, className = "" }) => (
     </div>
   </div>
 );
+Card.propTypes = {
+  children: PropTypes.node.isRequired,
+  className: PropTypes.string,
+};
 
 export default function Comments() {
   const [comments, setComments] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
   const fetchComments = async () => {
     setLoading(true);
-    const { data } = await supabase
-      .from("portfolio_comments")
-      .select("*")
-      .order("is_pinned", { ascending: false })
-      .order("created_at", { ascending: false });
-    setComments(data || []);
-    setLoading(false);
+    setLoadError("");
+    try {
+      const { data, error } = await supabase
+        .from("portfolio_comments")
+        .select("*")
+        .order("is_pinned", { ascending: false })
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setComments(data || []);
+      return true;
+    } catch (error) {
+      setLoadError(error.message || "Tidak dapat memuat komentar.");
+      await showAdminError("Memuat komentar", error);
+      return false;
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -51,17 +72,29 @@ export default function Comments() {
   }, [filter, search]);
 
   const pin = async (id, value) => {
-    await supabase
-      .from("portfolio_comments")
-      .update({ is_pinned: value })
-      .eq("id", id);
-    fetchComments();
+    try {
+      const { error } = await supabase
+        .from("portfolio_comments")
+        .update({ is_pinned: value })
+        .eq("id", id);
+      if (error) throw error;
+      await showAdminToast("success", value ? "Komentar disematkan" : "Sematan komentar dilepas");
+      await fetchComments();
+    } catch (error) {
+      await showAdminError("Memperbarui komentar", error);
+    }
   };
 
   const remove = async (id) => {
-    if (!confirm("Delete this comment?")) return;
-    await supabase.from("portfolio_comments").delete().eq("id", id);
-    fetchComments();
+    if (!(await confirmAdminDelete("komentar ini"))) return;
+    try {
+      const { error } = await supabase.from("portfolio_comments").delete().eq("id", id);
+      if (error) throw error;
+      await showAdminToast("success", "Komentar berhasil dihapus");
+      await fetchComments();
+    } catch (error) {
+      await showAdminError("Menghapus komentar", error);
+    }
   };
 
   const pinnedCount = comments.filter((c) => c.is_pinned).length;
@@ -190,16 +223,29 @@ export default function Comments() {
       {/* Result count when searching */}
       {search && (
         <p className="text-xs text-gray-500 -mt-3">
-          {filtered.length} result{filtered.length !== 1 ? "s" : ""} for "
-          {search}"
+          {filtered.length} result{filtered.length !== 1 ? "s" : ""} for
+          &quot;{search}&quot;
         </p>
       )}
 
       {/* Comments List */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-7 h-7 border-2 border-white/10 border-t-indigo-500 rounded-full animate-spin" />
+          <p className="text-sm text-gray-500" role="status">Memuat komentar…</p>
         </div>
+      ) : loadError ? (
+        <Card>
+          <div className="p-8 text-center" role="alert">
+            <p className="text-sm text-red-600">{loadError}</p>
+            <button
+              type="button"
+              onClick={fetchComments}
+              className="mt-4 min-h-11 rounded-xl border border-[var(--line)] px-4 text-sm text-[var(--text)]"
+            >
+              Coba lagi
+            </button>
+          </div>
+        </Card>
       ) : paginated.length === 0 ? (
         <Card>
           <div className="p-14 text-center">
